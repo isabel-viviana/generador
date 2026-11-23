@@ -5,61 +5,62 @@ Generador CLI PHP que analiza migraciones existentes y adapta CRUD a partir de l
 ## Requisitos
 
 - PHP CLI 8.0 o superior en `PATH`.
-- Backend y Frontend creados como proyectos Laravel. La generación temporal se comprobó con las fuentes actuales (Laravel `^13.17`, lock `13.43.0`); no se validó el runtime con dependencias instaladas.
+- `backend/` y `frontend/` creados como proyectos Laravel en el directorio padre de la carpeta del generador. La generación temporal se comprobó con las fuentes actuales (Laravel `^13.17`, lock `13.43.0`); no se validó el runtime con dependencias instaladas.
 - Composer para instalar las dependencias de Laravel. El generador no ejecuta `composer install` por su cuenta.
 - MySQL configurado si las migraciones del ejercicio utilizan MySQL.
-- Node.js/npm solamente si `Frontend/package.json` declara scripts de assets.
-- Fuentes originales verificadas para adaptar. Por defecto, `config.php` espera `pracExaLav/backend` y `pracExaLav/frontend` en la raíz del proyecto. Esta copia del repositorio contiene `.tools/.crud`, pero no incluye esas carpetas de referencia; sin ellas, la generación se detiene antes de escribir en los destinos. Se pueden usar otras fuentes ajustando `fuente_backend` y `fuente_frontend` en `.tools/.crud/config.php`.
+- Node.js/npm solamente si `../frontend/package.json` declara scripts de assets.
+- Fuentes originales verificadas para adaptar. Por defecto, `config.php` espera `pracExaLav/backend` y `pracExaLav/frontend` dentro de la carpeta del generador. Las rutas destino se configuran como `backend` y `frontend` en el directorio padre. El generador determina ambas ubicaciones a partir de sus propios archivos, por lo que su carpeta puede tener cualquier nombre.
 
 ## Preparar un ejercicio desde cero
 
 Ejecuta estos comandos desde la carpeta que será raíz del ejercicio. Si ya creaste los proyectos, omite los dos primeros comandos.
 
 ```sh
-composer create-project laravel/laravel Backend
-composer create-project laravel/laravel Frontend
+composer create-project laravel/laravel backend
+composer create-project laravel/laravel frontend
 ```
 
 Instala las dependencias de ambos proyectos si no fueron instaladas al crearlos:
 
 ```sh
-cd Backend && composer install
-cd ../Frontend && composer install
+cd backend && composer install
+cd ../frontend && composer install
 cd ..
 ```
 
-Copia `.tools/.crud` a la raíz del ejercicio, manteniendo el nombre oculto `.crud`:
+Copia el generador a una carpeta propia del ejercicio. El nombre de esa carpeta es libre; conserva dentro de ella `.tools/.crud` y las fuentes `pracExaLav`:
 
 ```text
 Ejercicio/
-├── Backend/
-├── Frontend/
-├── pracExaLav/                 # o las fuentes verificadas configuradas
-│   ├── backend/
-│   └── frontend/
-└── .tools/
-    └── .crud/
-        ├── generate.php
-        ├── config.php
-        └── src/
+├── backend/
+├── frontend/
+└── herramientas/               # puede llamarse g, crud, generador u otro nombre
+    ├── pracExaLav/
+    │   ├── backend/
+    │   └── frontend/
+    └── .tools/
+        └── .crud/
+            ├── generate.php
+            ├── config.php
+            └── src/
 ```
 
-La fuente es solo lectura y nunca debe apuntar al Backend o Frontend destino. Si las fuentes están en otra ubicación, configura sus rutas en `config.php` antes de generar. Revisa también `adaptaciones_backend` y `adaptaciones_frontend`: una tabla nueva solo se adapta cuando existe un mapeo fuente explícito y compatible.
+La fuente es solo lectura y nunca debe apuntar al Backend o Frontend destino. Si las fuentes están en otra ubicación, configura sus rutas en `.tools/.crud/config.php` desde la carpeta del generador. Revisa también `directorio_backend`, `directorio_frontend`, `adaptaciones_backend` y `adaptaciones_frontend`: una tabla nueva solo se adapta cuando existe un mapeo fuente explícito y compatible.
 
-Crea las migraciones en Backend. Ejemplo de comandos de Laravel:
+Crea las migraciones en `../backend`. Ejemplo de comandos de Laravel desde la carpeta del generador:
 
 ```sh
-cd Backend
+cd ../backend
 php artisan make:migration create_products_table
 php artisan make:migration create_categories_table
-cd ..
+cd -
 ```
 
 Edita esas migraciones con el esquema real del ejercicio, incluidas las claves foráneas que realmente existan. El analizador lee PHP estático; no ejecuta migraciones ni evalúa bucles o lógica dinámica.
 
 ## Generar todo
 
-Desde la raíz del ejercicio:
+Desde la carpeta del generador:
 
 ```sh
 php .tools/.crud/generate.php all
@@ -67,7 +68,7 @@ php .tools/.crud/generate.php all
 
 `all` ejecuta, en orden:
 
-1. Verifica PHP, las carpetas Backend/Frontend y la estructura Laravel.
+1. Verifica PHP, las carpetas `../backend` y `../frontend` y la estructura Laravel.
 2. Detecta Composer y, si el Frontend declara scripts npm, Node.js/npm y assets faltantes.
 3. Analiza migraciones, tablas, columnas, claves foráneas y relaciones. Un análisis inseguro detiene el flujo.
 4. Comprueba las fuentes de adaptación antes de escribir en los proyectos.
@@ -84,27 +85,29 @@ php .tools/.crud/generate.php back
 php .tools/.crud/generate.php front
 ```
 
-No uses `php .tools/crud/generate.php` en esta estructura: el directorio real se llama `.tools/.crud`.
+Ejecuta los comandos desde la carpeta del generador (o indica la ruta de su archivo `generate.php`).
 
 ## Configuración manual necesaria
 
 El generador puede crear `.env` y una `APP_KEY` vacía de forma segura, pero no conoce tus credenciales:
 
-1. Completa `Backend/.env` con `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` y el `DB_PASSWORD` correspondiente a tu MySQL.
-2. Si `Frontend/.env` ya existía antes de ejecutar el generador, verifica que `API_BASE_URL` apunte a la URL API indicada por el comando. Los valores existentes no se sobrescriben.
+1. Completa `../backend/.env` con `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` y el `DB_PASSWORD` correspondiente a tu MySQL.
+2. Si `../frontend/.env` ya existía antes de ejecutar el generador, verifica que `API_BASE_URL` apunte a la URL API indicada por el comando. Los valores existentes no se sobrescriben.
 3. Solo después de comprobar la conexión y el contenido de las migraciones, ejecuta:
 
    ```sh
-   cd Backend
+   cd ../backend
    php artisan migrate
+   cd -
    ```
 
 4. Si el Frontend usa Vite y todavía no hay `public/build/manifest.json`, instala/compila los assets:
 
    ```sh
-   cd Frontend
+   cd ../frontend
    npm install
    npm run build
+   cd -
    ```
 
 La instalación de paquetes no se ejecuta automáticamente, porque Composer/npm pueden necesitar red, modificar archivos de bloqueo o ejecutar scripts de terceros.
@@ -117,11 +120,12 @@ Cloudinary solo se reporta cuando el analizador detecta columnas configuradas co
 - El SDK debe instalarse en Backend. Si `composer.json` ya lo declara y falta `vendor/`, ejecuta `composer install`; si no está declarado, ejecuta el comando que indique el informe, normalmente:
 
   ```sh
-  cd Backend
+  cd ../backend
   composer require cloudinary/cloudinary_php:^3.3
+  cd -
   ```
 
-- Completa en `Backend/.env` las credenciales auténticas `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` y `CLOUDINARY_API_SECRET`.
+- Completa en `../backend/.env` las credenciales auténticas `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` y `CLOUDINARY_API_SECRET`.
 - La subida real requiere credenciales válidas y conexión a Cloudinary. El generador no sube imágenes ni afirma que esa operación esté probada.
 
 Si no hay campos de imagen, no se exige configurar Cloudinary.
@@ -150,7 +154,7 @@ El Backend expone sus rutas bajo `/api`; la URL concreta se informa usando la co
 
 ## Probar los CRUD
 
-1. Confirma la conexión de Backend a MySQL y ejecuta `php artisan migrate` en Backend.
+1. Confirma la conexión de Backend a MySQL y ejecuta `php artisan migrate` en `../backend`.
 2. Inicia los servicios con `php .tools/.crud/generate.php start`.
 3. Abre la URL de Frontend que mostró el comando.
 4. Prueba crear, listar, editar y eliminar cada entidad generada. Verifica los endpoints API del Backend si el Frontend muestra un error de conexión.
@@ -182,7 +186,7 @@ Las pruebas de adaptación Backend/Frontend y el caso de generación integrada d
 
 ## Errores frecuentes
 
-- **No se encuentra Backend o Frontend:** crea las carpetas con esos nombres exactos en la raíz o ejecuta desde la raíz correcta.
+- **No se encuentra Backend o Frontend:** crea `backend/` y `frontend/` en el directorio padre del generador, o ajusta `directorio_backend` y `directorio_frontend`.
 - **Proyecto Laravel inválido:** comprueba `composer.json`, `artisan` y `app/`; luego instala dependencias con Composer.
 - **Fuente original ausente:** ajusta `fuente_backend`/`fuente_frontend` a copias verificadas y legibles. No uses el destino como fuente.
 - **Migración parcial/no segura:** revisa las advertencias. Sustituye la lógica dinámica por migraciones estáticas o resuelve el diagnóstico antes de regenerar.

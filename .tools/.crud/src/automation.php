@@ -340,7 +340,7 @@ function crud_revisar_cloudinary($ruta_backend, array $imagenes)
 function crud_fuentes_disponibles(array $config)
 {
     $backend = resolver_directorio_fuente_backend($config);
-    $raiz = defined('RAIZ') ? RAIZ : dirname(CRUD_DIR, 2);
+    $raiz = crud_raiz_generador();
     $relativa = $config['fuente_frontend'] ?? 'pracExaLav/frontend';
     $frontend = realpath($raiz . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relativa));
     if ($frontend === false || !is_dir($frontend)
@@ -349,9 +349,10 @@ function crud_fuentes_disponibles(array $config)
         || !is_file($frontend . '/resources/views/home.blade.php')) {
         return ['backend' => $backend, 'frontend' => null];
     }
-    $destino_backend = realpath(RAIZ . DIRECTORY_SEPARATOR . 'Backend');
-    $destino_frontend = realpath(RAIZ . DIRECTORY_SEPARATOR . 'Frontend');
-    if ($backend === null || $destino_backend === false || $destino_frontend === false
+    $error = null;
+    $destino_backend = crud_resolver_directorio('Backend', $error);
+    $destino_frontend = crud_resolver_directorio('Frontend', $error);
+    if ($backend === null || $destino_backend === null || $destino_frontend === null
         || frontend_rutas_iguales($destino_backend, $backend)
         || ruta_fuente_dentro_de_raiz($destino_backend, $backend)
         || ruta_fuente_dentro_de_raiz($backend, $destino_backend)
@@ -446,7 +447,8 @@ function crud_ejecutar_all($config)
             continue;
         }
         if (!$info['dependencias_instaladas']) {
-            $resumen['manual'][] = "Instalar dependencias de $nombre: cd $nombre && composer install.";
+            $ruta_relativa = '../' . basename($ruta);
+            $resumen['manual'][] = "Instalar dependencias de $nombre: cd $ruta_relativa && composer install.";
             aviso("No se encontró vendor/ en $nombre; el generador no instala dependencias automáticamente.");
         }
     }
@@ -454,6 +456,9 @@ function crud_ejecutar_all($config)
         crud_imprimir_pendientes($resumen['manual']);
         return 1;
     }
+
+    $ruta_relativa_backend = '../' . basename($rutas['Backend']);
+    $ruta_relativa_frontend = '../' . basename($rutas['Frontend']);
 
     if (!crud_comprobar_comando('composer')) {
         aviso('Composer no se encontró en PATH; la generación de código no lo necesita, pero será necesario para instalar dependencias.');
@@ -469,18 +474,18 @@ function crud_ejecutar_all($config)
             aviso('El Frontend necesita assets npm, pero Node.js o npm no se encontró en PATH.');
         } elseif (!is_dir($rutas['Frontend'] . '/node_modules')) {
             $resumen['manual'][] = $assets_pendientes === 'build'
-                ? 'Compilar assets: cd Frontend && npm install && npm run build.'
-                : 'Instalar assets y mantener Vite activo: cd Frontend && npm install && npm run dev.';
+                ? "Compilar assets: cd $ruta_relativa_frontend && npm install && npm run build."
+                : "Instalar assets y mantener Vite activo: cd $ruta_relativa_frontend && npm install && npm run dev.";
             aviso('No se encontró node_modules; el generador no instala paquetes automáticamente.');
         } elseif ($assets_pendientes === 'build') {
-            $resumen['manual'][] = 'Compilar assets: cd Frontend && npm run build.';
+            $resumen['manual'][] = "Compilar assets: cd $ruta_relativa_frontend && npm run build.";
             aviso('No se encontró public/build/manifest.json; revise npm run build antes de probar las vistas.');
         } else {
-            $resumen['manual'][] = 'Iniciar Vite en otra terminal: cd Frontend && npm run dev.';
+            $resumen['manual'][] = "Iniciar Vite en otra terminal: cd $ruta_relativa_frontend && npm run dev.";
             aviso('No se encontró public/build/manifest.json ni public/hot; se requiere el servidor Vite.');
         }
     } elseif (is_file($rutas['Frontend'] . '/public/build/manifest.json')) {
-        exito('Assets compilados detectados en Frontend/public/build.');
+        exito("Assets compilados detectados en $ruta_relativa_frontend/public/build.");
     }
 
     $analisis = analizar_migraciones($rutas['Backend'], $config);
@@ -494,7 +499,7 @@ function crud_ejecutar_all($config)
         return 1;
     }
     if (($analisis['tablas'] ?? []) === []) {
-        mostrar_error('No hay tablas analizadas en Backend/database/migrations.');
+        mostrar_error("No hay tablas analizadas en $ruta_relativa_backend/database/migrations.");
         crud_imprimir_pendientes($resumen['manual']);
         return 1;
     }
@@ -601,16 +606,16 @@ function crud_ejecutar_all($config)
             : ($cloudinary['sdk_declarado'] ? '[!] declarado, no instalado' : '[!] no instalado ni declarado')));
         mensaje('Configuración config/services.php: ' . ($cloudinary['config'] ? '[OK]' : '[!] falta'));
         if (!$cloudinary['sdk_instalado'] && !$cloudinary['sdk_declarado']) {
-            $resumen['manual'][] = 'Instalar Cloudinary en Backend: cd Backend && composer require cloudinary/cloudinary_php:^3.3.';
+            $resumen['manual'][] = "Instalar Cloudinary: cd $ruta_relativa_backend && composer require cloudinary/cloudinary_php:^3.3.";
         }
         if (!$cloudinary['config']) {
-            $resumen['manual'][] = 'Revisar la entrada services.cloudinary en Backend/config/services.php.';
+            $resumen['manual'][] = "Revisar la entrada services.cloudinary en $ruta_relativa_backend/config/services.php.";
         }
         if ($cloudinary['variables_faltantes'] !== []) {
-            $resumen['manual'][] = 'Completar credenciales en Backend/.env: ' . implode(', ', $cloudinary['variables_faltantes']) . '.';
+            $resumen['manual'][] = "Completar credenciales en $ruta_relativa_backend/.env: " . implode(', ', $cloudinary['variables_faltantes']) . '.';
         }
         if ($cloudinary['variables_duplicadas'] !== []) {
-            $resumen['manual'][] = 'Resolver definiciones duplicadas en Backend/.env: ' . implode(', ', $cloudinary['variables_duplicadas']) . '.';
+            $resumen['manual'][] = "Resolver definiciones duplicadas en $ruta_relativa_backend/.env: " . implode(', ', $cloudinary['variables_duplicadas']) . '.';
         }
         $resumen['manual'][] = 'Probar manualmente una carga de imagen con credenciales Cloudinary válidas.';
         aviso('La subida real no se ha probado; requiere credenciales válidas y conectividad.');
@@ -619,10 +624,10 @@ function crud_ejecutar_all($config)
     $env_frontend = crud_leer_env($rutas['Frontend'] . DIRECTORY_SEPARATOR . '.env');
     $api_en_env = $env_frontend['valores']['API_BASE_URL'] ?? [];
     if (count($api_en_env) !== 1 || rtrim($api_en_env[0], '/') !== $api) {
-        $resumen['manual'][] = 'Ajustar Frontend/.env para que tenga una sola API_BASE_URL=' . $api . '; se preservó cualquier valor no vacío preexistente.';
+        $resumen['manual'][] = "Ajustar $ruta_relativa_frontend/.env para que tenga una sola API_BASE_URL=" . $api . '; se preservó cualquier valor no vacío preexistente.';
     }
-    $resumen['manual'][] = 'Configurar/verificar la conexión a MySQL en Backend/.env.';
-    $resumen['manual'][] = 'Desde Backend, ejecutar php artisan migrate después de confirmar la base de datos; no se ejecutó automáticamente.';
+    $resumen['manual'][] = "Configurar/verificar la conexión a MySQL en $ruta_relativa_backend/.env.";
+    $resumen['manual'][] = "Desde $ruta_relativa_backend, ejecutar php artisan migrate después de confirmar la base de datos; no se ejecutó automáticamente.";
 
     crud_imprimir_pendientes($resumen['manual']);
     mensaje('');
@@ -630,7 +635,7 @@ function crud_ejecutar_all($config)
     mensaje('Backend: http://' . $host_local . ':' . (int) $config['puerto_backend']);
     mensaje('Frontend: http://' . $host_local . ':' . (int) $config['puerto_frontend']);
     mensaje('API: ' . $api);
-    mensaje('Inicie ambos servicios con: php .tools/.crud/generate.php start');
+    mensaje('Inicie ambos servicios con el comando "start" desde la carpeta del generador.');
     return 0;
 }
 
@@ -661,10 +666,11 @@ function crud_iniciar_servidores($config)
 
     $assets_pendientes = crud_frontend_assets_pendientes($rutas['Frontend']);
     if ($assets_pendientes !== null) {
+        $ruta_relativa_frontend = '../' . basename($rutas['Frontend']);
         mostrar_error('No hay assets compilados ni servidor Vite activo. '
             . ($assets_pendientes === 'build'
-                ? 'Ejecute npm install y npm run build en Frontend.'
-                : 'Inicie npm run dev en Frontend y vuelva a ejecutar start.'));
+                ? "Ejecute npm install y npm run build en $ruta_relativa_frontend."
+                : "Inicie npm run dev en $ruta_relativa_frontend y vuelva a ejecutar start."));
         return 1;
     }
 

@@ -36,7 +36,11 @@ return [
         // 'tbl_cliente_data' => 'Cliente',
     ],
 
-    // Proyecto backend de referencia, relativo a la raíz del proyecto generador.
+    // Proyectos destino, relativos al directorio padre de la carpeta del generador.
+    'directorio_backend' => 'backend',
+    'directorio_frontend' => 'frontend',
+
+    // Proyectos de referencia, relativos a la carpeta del generador.
     'fuente_backend' => 'pracExaLav/backend',
 
     // Proyecto frontend original. Se lee como fuente y nunca se modifica.

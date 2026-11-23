@@ -60,16 +60,39 @@ function crud_ruta_dentro_de_raiz($ruta, $raiz)
 
 function crud_resolver_directorio($nombre, &$error)
 {
-    $ruta = RAIZ . DIRECTORY_SEPARATOR . $nombre;
+    global $config;
+    $claves = [
+        'Backend' => 'directorio_backend',
+        'Frontend' => 'directorio_frontend',
+    ];
+    if (!isset($claves[$nombre])) {
+        $error = 'Tipo de destino no válido.';
+        return null;
+    }
+
+    $carpeta = $config[$claves[$nombre]] ?? strtolower($nombre);
+    if (!is_string($carpeta) || trim($carpeta) === ''
+        || $carpeta === '.' || $carpeta === '..'
+        || str_contains($carpeta, '/') || str_contains($carpeta, '\\')) {
+        $error = "La configuración {$claves[$nombre]} debe ser un nombre de carpeta relativo simple.";
+        return null;
+    }
+
+    $ruta = RAIZ . DIRECTORY_SEPARATOR . $carpeta;
     $ruta_real = realpath($ruta);
 
+    // Conserva compatibilidad con ejercicios que usan nombres de carpeta en mayúsculas iniciales.
+    if ($ruta_real === false && $carpeta === strtolower($nombre)) {
+        $ruta_real = realpath(RAIZ . DIRECTORY_SEPARATOR . $nombre);
+    }
+
     if ($ruta_real === false || !is_dir($ruta_real)) {
-        $error = 'No se encontró la carpeta ' . $nombre . ' dentro de la raíz del proyecto.';
+        $error = 'No se encontró la carpeta ' . $carpeta . ' dentro del directorio padre del generador.';
         return null;
     }
 
     if (!crud_ruta_dentro_de_raiz($ruta_real, RAIZ)) {
-        $error = 'Ruta insegura: la carpeta ' . $nombre . ' resuelve fuera de la raíz del proyecto. Ejecución detenida.';
+        $error = 'Ruta insegura: la carpeta ' . $carpeta . ' resuelve fuera del directorio padre del generador. Ejecución detenida.';
         return null;
     }
 
@@ -77,26 +100,33 @@ function crud_resolver_directorio($nombre, &$error)
 }
 
 try {
-    $raiz_calculada = realpath(dirname(CRUD_DIR, 2));
+    $generador_calculado = realpath(dirname(CRUD_DIR, 2));
+    $raiz_calculada = $generador_calculado === false ? false : realpath(dirname($generador_calculado));
     if ($raiz_calculada === false
         || !is_dir($raiz_calculada)
-        || !is_dir($raiz_calculada . DIRECTORY_SEPARATOR . '.tools')) {
-        mostrar_error('No se pudo determinar la raíz del proyecto contenedor de .tools.');
+        || $generador_calculado === false
+        || !is_dir($generador_calculado . DIRECTORY_SEPARATOR . '.tools')) {
+        mostrar_error('No se pudo determinar la carpeta del generador y su directorio padre.');
         exit(2);
     }
 
+    $generador_normalizado = rtrim($generador_calculado, '/\\');
+    if ($generador_normalizado === '') {
+        $generador_normalizado = DIRECTORY_SEPARATOR;
+    }
     $raiz_normalizada = rtrim($raiz_calculada, '/\\');
     if ($raiz_normalizada === '') {
         $raiz_normalizada = DIRECTORY_SEPARATOR;
     }
 
     $crud_real = realpath(CRUD_DIR);
-    $crud_esperado = rtrim($raiz_normalizada, '/\\') . DIRECTORY_SEPARATOR . '.tools' . DIRECTORY_SEPARATOR . '.crud';
+    $crud_esperado = rtrim($generador_normalizado, '/\\') . DIRECTORY_SEPARATOR . '.tools' . DIRECTORY_SEPARATOR . '.crud';
     if ($crud_real === false || !is_dir($crud_real) || !crud_rutas_coinciden($crud_real, $crud_esperado)) {
         mostrar_error('La ubicación de .tools/.crud no coincide con la estructura esperada del proyecto. Ejecución detenida.');
         exit(2);
     }
 
+    define('GENERADOR_ROOT', $generador_normalizado);
     define('RAIZ', $raiz_normalizada);
     $comando = strtolower(trim($argv[1] ?? ''));
 } catch (Throwable $e) {

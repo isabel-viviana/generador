@@ -172,7 +172,8 @@ try {
     automation_assert(crud_puerto_disponible('127.0.0.1', $puerto), 'Se reportó ocupado un puerto liberado.');
     echo "OK: los puertos ocupados y disponibles se distinguen\n";
 
-    $raiz_prueba = $fixture . '/project';
+    $raiz_proyecto_prueba = $fixture . '/project';
+    $raiz_prueba = $raiz_proyecto_prueba . '/g';
     $crud_prueba = $raiz_prueba . '/.tools/.crud';
     mkdir($crud_prueba, 0777, true);
     $origen = dirname(__DIR__);
@@ -195,18 +196,19 @@ try {
         [PHP_BINARY, $crud_prueba . '/generate.php', 'all'],
         [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
         $pipes,
-        $raiz_prueba
+        $raiz_proyecto_prueba
     );
     automation_assert(is_resource($proceso), 'No se pudo iniciar la prueba CLI de all.');
     $salida = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
     fclose($pipes[1]);
     fclose($pipes[2]);
     $codigo = proc_close($proceso);
-    automation_assert($codigo !== 0 && str_contains($salida, 'No se encontró la carpeta Backend'), 'all no falló explícitamente ante un proyecto sin Backend.');
-    automation_assert(!file_exists($raiz_prueba . '/Backend/.env'), 'all modificó un destino después de fallar la comprobación estructural.');
+    automation_assert($codigo !== 0 && str_contains($salida, 'No se encontró la carpeta backend'), 'all no falló explícitamente ante un proyecto sin backend.');
+    automation_assert(!file_exists($raiz_proyecto_prueba . '/backend/.env'), 'all modificó un destino después de fallar la comprobación estructural.');
     echo "OK: all falla en preflight sin escribir en proyectos destino\n";
 
-    $raiz_fuentes = $fixture . '/project-without-sources';
+    $raiz_proyecto_fuentes = $fixture . '/project-without-sources';
+    $raiz_fuentes = $raiz_proyecto_fuentes . '/herramientas';
     $crud_fuentes = $raiz_fuentes . '/.tools/.crud';
     mkdir($crud_fuentes, 0777, true);
     $iterador = new RecursiveIteratorIterator(
@@ -225,20 +227,21 @@ try {
         }
     }
     foreach (['Backend', 'Frontend'] as $nombre) {
-        mkdir("$raiz_fuentes/$nombre/app", 0777, true);
-        file_put_contents("$raiz_fuentes/$nombre/composer.json", '{"require":{"php":"^8.0","laravel/framework":"^11.0"}}');
-        file_put_contents("$raiz_fuentes/$nombre/artisan", "<?php\n");
+        $directorio = strtolower($nombre);
+        mkdir("$raiz_proyecto_fuentes/$directorio/app", 0777, true);
+        file_put_contents("$raiz_proyecto_fuentes/$directorio/composer.json", '{"require":{"php":"^8.0","laravel/framework":"^11.0"}}');
+        file_put_contents("$raiz_proyecto_fuentes/$directorio/artisan", "<?php\n");
     }
-    mkdir("$raiz_fuentes/Backend/database/migrations", 0777, true);
+    mkdir("$raiz_proyecto_fuentes/backend/database/migrations", 0777, true);
     file_put_contents(
-        "$raiz_fuentes/Backend/database/migrations/2026_01_01_000000_create_products.php",
+        "$raiz_proyecto_fuentes/backend/database/migrations/2026_01_01_000000_create_products.php",
         "<?php\nreturn new class { public function up(): void { Schema::create('products', function (\$table) { \$table->id(); \$table->string('name'); }); } };\n"
     );
     $proceso = proc_open(
         [PHP_BINARY, $crud_fuentes . '/generate.php', 'all'],
         [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
         $pipes,
-        $raiz_fuentes
+        $raiz_proyecto_fuentes
     );
     automation_assert(is_resource($proceso), 'No se pudo ejecutar all con proyectos temporales válidos.');
     $salida = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
@@ -252,12 +255,13 @@ try {
         'all no analizó migraciones antes de detenerse por falta de fuentes.'
     );
     automation_assert(
-        !file_exists("$raiz_fuentes/Backend/.env") && !file_exists("$raiz_fuentes/Frontend/.env"),
+        !file_exists("$raiz_proyecto_fuentes/backend/.env") && !file_exists("$raiz_proyecto_fuentes/frontend/.env"),
         'all alteró entornos destino antes de comprobar que existieran las fuentes.'
     );
     echo "OK: all analiza las migraciones y valida fuentes antes de modificar destinos\n";
 
-    $raiz_all = $fixture . '/all-success';
+    $raiz_proyecto_all = $fixture . '/all-success';
+    $raiz_all = $raiz_proyecto_all . '/crud';
     $crud_all = $raiz_all . '/.tools/.crud';
     $raiz_repositorio = dirname(__DIR__, 3);
     $origenes = [
@@ -287,6 +291,7 @@ try {
         }
     }
     foreach (['Backend', 'Frontend'] as $nombre) {
+        $directorio_destino = strtolower($nombre);
         foreach ([
             'app/Http/Controllers',
             'app/Models',
@@ -298,7 +303,7 @@ try {
             'resources/views/layouts',
             'routes',
         ] as $directorio) {
-            mkdir("$raiz_all/$nombre/$directorio", 0777, true);
+            mkdir("$raiz_proyecto_all/$directorio_destino/$directorio", 0777, true);
         }
         $origen_app = $origenes[$nombre === 'Backend' ? 'pracExaLav/backend' : 'pracExaLav/frontend'];
         $archivos_proyecto = ['artisan', 'composer.json', 'composer.lock', '.env.example'];
@@ -307,18 +312,18 @@ try {
         }
         foreach ($archivos_proyecto as $archivo) {
             automation_assert(
-                automation_copiar_archivo("$origen_app/$archivo", "$raiz_all/$nombre/$archivo"),
+                automation_copiar_archivo("$origen_app/$archivo", "$raiz_proyecto_all/$directorio_destino/$archivo"),
                 "No se pudo preparar $nombre/$archivo para la prueba integrada."
             );
         }
         automation_copiar_archivo(
             "$origen_app/app/Http/Controllers/Controller.php",
-            "$raiz_all/$nombre/app/Http/Controllers/Controller.php"
+            "$raiz_proyecto_all/$directorio_destino/app/Http/Controllers/Controller.php"
         );
     }
     automation_copiar_archivo(
         $origenes['pracExaLav/backend'] . '/config/services.php',
-        "$raiz_all/Backend/config/services.php"
+        "$raiz_proyecto_all/backend/config/services.php"
     );
     $iterador_migraciones = new DirectoryIterator($origenes['pracExaLav/backend'] . '/database/migrations');
     foreach ($iterador_migraciones as $migracion) {
@@ -326,7 +331,7 @@ try {
             automation_assert(
                 automation_copiar_archivo(
                     $migracion->getPathname(),
-                    "$raiz_all/Backend/database/migrations/" . $migracion->getFilename()
+                    "$raiz_proyecto_all/backend/database/migrations/" . $migracion->getFilename()
                 ),
                 'No se pudo preparar una migración para la prueba integrada.'
             );
@@ -336,7 +341,7 @@ try {
         [PHP_BINARY, $crud_all . '/generate.php', 'all'],
         [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
         $pipes,
-        $raiz_all
+        $raiz_proyecto_all
     );
     automation_assert(is_resource($proceso), 'No se pudo ejecutar all con proyectos temporales compatibles.');
     $salida = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
@@ -356,21 +361,41 @@ try {
     );
     preg_match_all(
         '/^CLOUDINARY_(?:CLOUD_NAME|API_KEY|API_SECRET)=$/m',
-        file_get_contents("$raiz_all/Backend/.env"),
+        file_get_contents("$raiz_proyecto_all/backend/.env"),
         $variables_cloudinary_vacias
     );
     automation_assert(
-        str_contains(file_get_contents("$raiz_all/Frontend/.env"), 'API_BASE_URL=http://127.0.0.1:8001/api')
+        str_contains(file_get_contents("$raiz_proyecto_all/frontend/.env"), 'API_BASE_URL=http://127.0.0.1:8001/api')
             && count($variables_cloudinary_vacias[0]) === 3,
         'all no alineó la API o copió valores Cloudinary desde la referencia.'
     );
     echo "OK: all genera Backend/Frontend en una copia temporal y prepara .env sin reutilizar valores de referencia\n";
 
+    foreach (['back', 'front'] as $comando) {
+        $proceso = proc_open(
+            [PHP_BINARY, $crud_all . '/generate.php', $comando],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+            $raiz_proyecto_all
+        );
+        automation_assert(is_resource($proceso), "No se pudo ejecutar el comando $comando de forma independiente.");
+        $salida = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $codigo = proc_close($proceso);
+        automation_assert(
+            $codigo === 0,
+            "El comando $comando falló al ejecutarse desde el generador con destinos hermanos. Salida: $salida"
+        );
+    }
+    echo "OK: back y front encuentran los destinos y las fuentes al ejecutarse por separado\n";
+
     foreach (['Backend', 'Frontend'] as $nombre) {
-        mkdir("$raiz_prueba/$nombre/app", 0777, true);
-        mkdir("$raiz_prueba/$nombre/vendor/laravel/framework", 0777, true);
-        file_put_contents("$raiz_prueba/$nombre/composer.json", '{"require":{"php":"^8.0","laravel/framework":"^11.0"}}');
-        file_put_contents("$raiz_prueba/$nombre/artisan", "<?php\n");
+        $directorio = strtolower($nombre);
+        mkdir("$raiz_proyecto_prueba/$directorio/app", 0777, true);
+        mkdir("$raiz_proyecto_prueba/$directorio/vendor/laravel/framework", 0777, true);
+        file_put_contents("$raiz_proyecto_prueba/$directorio/composer.json", '{"require":{"php":"^8.0","laravel/framework":"^11.0"}}');
+        file_put_contents("$raiz_proyecto_prueba/$directorio/artisan", "<?php\n");
     }
     $config_path = $crud_prueba . '/config.php';
     $config = file_get_contents($config_path);
@@ -380,7 +405,7 @@ try {
         [PHP_BINARY, $crud_prueba . '/generate.php', 'start'],
         [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
         $pipes,
-        $raiz_prueba
+        $raiz_proyecto_prueba
     );
     automation_assert(is_resource($proceso), 'No se pudo ejecutar start para probar los puertos duplicados.');
     $salida = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);

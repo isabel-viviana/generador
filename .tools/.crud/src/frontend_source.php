@@ -930,7 +930,7 @@ function generar_frontend_desde_fuentes($ruta_frontend, $ruta_backend, $config)
         return $resumen;
     }
 
-    $raiz_proyecto = realpath(dirname(CRUD_DIR, 2));
+    $raiz_proyecto = realpath(crud_raiz_generador());
     $fuente_configurada = $config['fuente_frontend'] ?? 'pracExaLav/frontend';
     $raiz_fuente = realpath($raiz_proyecto . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $fuente_configurada));
     $raiz_destino = realpath($ruta_frontend);

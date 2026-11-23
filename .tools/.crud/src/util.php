@@ -30,6 +30,17 @@ function mostrar_error($texto)
 // Directorios y rutas
 // ------------------------------------------------------------
 
+function crud_raiz_generador()
+{
+    if (defined('GENERADOR_ROOT')) {
+        return GENERADOR_ROOT;
+    }
+    if (defined('CRUD_DIR')) {
+        return dirname(CRUD_DIR, 2);
+    }
+    return dirname(__DIR__, 3);
+}
+
 function crear_directorio($ruta)
 {
     if (!is_dir($ruta)) {
@@ -400,7 +411,7 @@ function nombre_proyecto($config)
         return slug(basename(RAIZ));
     }
     if (defined('CRUD_DIR')) {
-        return slug(basename(dirname(CRUD_DIR, 2)));
+        return slug(basename(crud_raiz_generador()));
     }
     return slug(basename(getcwd()));
 }

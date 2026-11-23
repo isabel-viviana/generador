@@ -954,7 +954,7 @@ function resolver_directorio_fuente_backend($config)
         return null;
     }
 
-    $base = defined('RAIZ') ? RAIZ : dirname(CRUD_DIR, 2);
+    $base = crud_raiz_generador();
     $ruta = preg_match('/^(?:[A-Za-z]:[\\\\\/]|[\\\\\/])/', $ruta_configurada)
         ? $ruta_configurada
         : $base . DIRECTORY_SEPARATOR . $ruta_configurada;
