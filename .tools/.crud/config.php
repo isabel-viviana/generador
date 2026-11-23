@@ -26,7 +26,7 @@ return [
     // Nombres de columnas que se consideran imágenes.
     // El asterisco (*) significa "cualquier texto". Ejemplo: '*_imagen' coincide con 'foto_imagen'.
     'campos_imagen' => [
-        'imagen', 'image', 'foto', 'photo', 'avatar', 'logo', 'portada', 'banner', 'miniatura',
+        'imagen', 'image', 'foto', 'fotografia', 'photo', 'avatar', 'logo', 'portada', 'banner', 'miniatura',
         'imagen_*', '*_imagen', 'foto_*', '*_foto', 'img_*',
     ],
 
@@ -49,6 +49,12 @@ return [
     'frontend_home_parrafo_fuente' => 'Administra desde un solo lugar la información de docentes, aprendices y módulos del sistema.',
     'frontend_home_parrafo' => 'Administra desde un solo lugar la información de docentes, aprendices y módulos del sistema.',
     'frontend_api_base_url' => 'http://127.0.0.1:8001/api',
+
+    // Puertos de los servidores artisan serve. El puerto Backend también se
+    // utiliza para derivar frontend_api_base_url sin cambiar su host/ruta.
+    'host_local' => '127.0.0.1',
+    'puerto_backend' => 8001,
+    'puerto_frontend' => 8002,
 
     // Mapeos explícitos de entidad sobre controladores y vistas reales de pracExaLav.
     // Una entidad nueva debe mapear todos los campos, en orden, a una fuente

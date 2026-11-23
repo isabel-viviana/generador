@@ -815,7 +815,9 @@ function asegurar_dependencia_cloudinary($ruta_backend)
     }
     $composer['require']['cloudinary/cloudinary_php'] = '^3.3';
     $nuevo = json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
-    escribir_archivo_sin_marca($composer_path, $nuevo);
+    if (!escribir_archivo_sin_marca($composer_path, $nuevo)) {
+        throw new RuntimeException('No se pudo actualizar composer.json para Cloudinary.');
+    }
     return true;
 }
 
@@ -830,7 +832,7 @@ function configurar_services_cloudinary($ruta_backend, &$advertencias, $ruta_ser
 
     $contenido = file_get_contents($services_path);
 
-    if (strpos($contenido, "'cloudinary'") !== false || strpos($contenido, '"cloudinary"') !== false) {
+    if (preg_match('/^[ \t]*[\'"]cloudinary[\'"][ \t]*=>/m', $contenido) === 1) {
         return true;
     }
 
@@ -876,7 +878,13 @@ function configurar_services_cloudinary($ruta_backend, &$advertencias, $ruta_ser
 }
 
 // Configura las variables de entorno en .env sin sobrescribir valores existentes.
-function configurar_env_backend($ruta_backend, $nombre_proyecto, $hay_imagenes, &$advertencias)
+function configurar_env_backend(
+    $ruta_backend,
+    $nombre_proyecto,
+    $hay_imagenes,
+    &$advertencias,
+    $puerto_backend = 8001
+)
 {
     $env_path = $ruta_backend . '/.env';
     if (!file_exists($env_path)) {
@@ -888,9 +896,14 @@ function configurar_env_backend($ruta_backend, $nombre_proyecto, $hay_imagenes, 
     $crlf = (strpos($contenido, "\r\n") !== false) ? "\r\n" : "\n";
     $cambio = false;
 
-    // APP_URL con dominio local
+    if (!is_numeric($puerto_backend)
+        || (int) $puerto_backend < 1
+        || (int) $puerto_backend > 65535) {
+        $advertencias[] = 'No se pudo determinar una URL APP_URL local válida desde la configuración.';
+        return false;
+    }
     $dominio_back = slug($nombre_proyecto) . '-backend.test';
-    $url_local = "http://{$dominio_back}:8001";
+    $url_local = "http://{$dominio_back}:" . (int) $puerto_backend;
 
     if (preg_match('/^APP_URL=(.*)$/m', $contenido, $m)) {
         $valor_actual = trim($m[1], " '\"");
@@ -2145,7 +2158,13 @@ function generar_backend_crud($ruta_backend, $config)
     // 5. Configurar .env de Backend
     $nom_proy = nombre_proyecto($config);
     try {
-        $env_ok = configurar_env_backend($ruta_backend, $nom_proy, $hay_campos_imagen_global, $resumen['advertencias']);
+        $env_ok = configurar_env_backend(
+            $ruta_backend,
+            $nom_proy,
+            $hay_campos_imagen_global,
+            $resumen['advertencias'],
+            $config['puerto_backend'] ?? 8001
+        );
         $resumen['env_actualizado'] = $env_ok;
     } catch (Throwable $e) {
         $resumen['advertencias'][] = "No se pudo actualizar .env: " . $e->getMessage();

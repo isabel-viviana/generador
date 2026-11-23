@@ -21,11 +21,16 @@ require CRUD_DIR . '/src/migraciones.php';
 require CRUD_DIR . '/src/hosts.php';
 require CRUD_DIR . '/src/backend.php';
 require CRUD_DIR . '/src/frontend.php';
+require CRUD_DIR . '/src/automation.php';
 
 $config = require CRUD_DIR . '/config.php';
 if (!is_array($config)) {
     mostrar_error('config.php no devuelve una configuración válida.');
     exit(2);
+}
+$api_base_url = crud_api_base_url($config);
+if ($api_base_url !== null) {
+    $config['frontend_api_base_url'] = $api_base_url;
 }
 
 function crud_rutas_coinciden($ruta_a, $ruta_b)
@@ -101,6 +106,12 @@ try {
 
 try {
     switch ($comando) {
+        case 'all':
+            exit(crud_ejecutar_all($config));
+
+        case 'start':
+            exit(crud_iniciar_servidores($config));
+
         case 'back':
             $error_ruta = null;
             $dir_back = crud_resolver_directorio('Backend', $error_ruta);
@@ -186,15 +197,14 @@ try {
             if (!empty($resumen['cloudinary'])) {
                 mensaje('');
                 mensaje('--- Cloudinary ---');
-                exito('SDK cloudinary/cloudinary_php configurado.');
-                exito('Entrada de servicio cloudinary configurada en config/services.php.');
+                exito('Entrada Cloudinary integrada en config/services.php.');
             }
 
             // Configuración de entorno .env (Bloque 5)
             if (!empty($resumen['env_actualizado'])) {
                 mensaje('');
                 mensaje('--- Configuración .env ---');
-                exito('Variables APP_URL y credenciales de Cloudinary actualizadas en Backend/.env.');
+                exito('APP_URL y, si aplica, nombres de variables Cloudinary verificados en Backend/.env; complete las credenciales manualmente.');
             }
 
             // Dominio Local Hosts (Bloque 5)
@@ -423,8 +433,10 @@ try {
             }
             mensaje('');
             mensaje('Uso:');
+            mensaje('  all             Verifica el proyecto y genera Backend y Frontend en orden.');
             mensaje('  generar back    Genera el Backend (API) a partir de las migraciones.');
             mensaje('  generar front   Genera el Frontend (Blade) que consume la API.');
+            mensaje('  start           Inicia Backend y Frontend, comprobando puertos y disponibilidad.');
             exit(1);
     }
 } catch (Throwable $e) {
