@@ -574,6 +574,7 @@ $backend_completo = $raiz_generacion_completa . DIRECTORY_SEPARATOR . 'Backend';
 $frontend_completo = $raiz_generacion_completa . DIRECTORY_SEPARATOR . 'Frontend';
 $migrations_completo = $backend_completo . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR . 'migrations';
 mkdir($migrations_completo, 0777, true);
+mkdir($frontend_completo, 0777, true);
 migraciones_escribir($backend_completo, '2026_07_01_000000_create_complete_items.php', <<<'MIGRATION'
 <?php
 return new class {
@@ -594,12 +595,20 @@ try {
     migraciones_assert(!guardia_generacion_migraciones($analisis_completo)['bloqueada'], 'La guarda bloqueó una generación válida.');
     $backend_generado = generar_backend_crud($backend_completo, ['nombre_proyecto' => 'audit-test']);
     $frontend_generado = generar_frontend_crud($frontend_completo, $backend_completo, ['nombre_proyecto' => 'audit-test']);
-    migraciones_assert(count($backend_generado['modelos']) === 1 && count($backend_generado['controladores']) === 1, 'Backend no generó el CRUD del análisis completo.');
-    migraciones_assert(count($frontend_generado['controladores']) === 1 && count($frontend_generado['vistas']) === 4, 'Frontend no generó el CRUD del análisis completo.');
+    migraciones_assert(count($backend_generado['modelos']) === 1 && count($backend_generado['controladores']) === 0, 'Backend no protegió una entidad sin mapeo de validaciones fuente.');
+    migraciones_assert(count(array_filter(
+        $backend_generado['adaptaciones_pendientes'],
+        static fn($pendiente) => $pendiente['tipo'] === 'controlador API'
+    )) === 1, 'Backend no registró el mapeo de validación faltante.');
+    migraciones_assert(
+        $frontend_generado['controladores'] === []
+            && $frontend_generado['vistas'] === []
+            && count($frontend_generado['adaptaciones_pendientes']) === 1,
+        'Frontend generó un diseño genérico sin manifiesto fuente explícito: ' . json_encode($frontend_generado, JSON_UNESCAPED_UNICODE)
+    );
     $modelo_generado = file_get_contents($backend_completo . '/app/Models/CompleteItem.php');
-    $vista_generada = file_get_contents($frontend_completo . '/resources/views/crud/complete_items/create.blade.php');
-    migraciones_assert(str_contains($modelo_generado, 'name') && str_contains($vista_generada, 'name'), 'La salida generada no contiene el campo declarado en la migración.');
-    echo "OK: generación real Backend/Frontend para análisis complete\n";
+    migraciones_assert(str_contains($modelo_generado, 'name') && !is_dir($frontend_completo . '/resources/views/complete_items'), 'Backend válido o frontend pendiente se generó incorrectamente.');
+    echo "OK: Backend complete y Frontend queda pendiente sin mapeo de fuente\n";
 } finally {
     migraciones_limpiar_arbol_temporal($raiz_generacion_completa);
 }
@@ -746,7 +755,7 @@ try {
     migraciones_assert(es_tabla_elegible('role_user_links', $tablas_clasificadas['role_user_links'], []), 'Backend descartó una tabla ambigua por el indicador legacy es_pivote.');
     migraciones_assert($tablas_clasificadas['module_teachers']['classification']['type'] === 'associative_entity', 'module_teachers con PK propia no se clasificó como entidad asociativa.');
     migraciones_assert(es_tabla_elegible('module_teachers', $tablas_clasificadas['module_teachers'], []), 'Backend excluyó una entidad asociativa con PK propia.');
-    migraciones_assert(es_tabla_elegible_front('module_teachers', $tablas_clasificadas['module_teachers'], []), 'Frontend excluyó una entidad asociativa con PK propia.');
+    migraciones_assert(!es_tabla_elegible_front('module_teachers', $tablas_clasificadas['module_teachers'], []), 'Frontend debe excluir la entidad asociativa de module_teachers, como la referencia.');
     foreach (['migrations', 'password_reset_tokens', 'password_resets', 'sessions', 'cache', 'cache_locks', 'jobs', 'job_batches', 'failed_jobs'] as $tabla_framework) {
         migraciones_assert($tablas_clasificadas[$tabla_framework]['classification']['type'] === 'framework_auxiliary', "$tabla_framework no se reconoció por su firma estructural.");
         migraciones_assert(!es_tabla_elegible($tabla_framework, $tablas_clasificadas[$tabla_framework], []), "Backend dejó elegible la tabla auxiliar $tabla_framework.");
@@ -910,7 +919,8 @@ try {
     $m2m_employee_skill = $buscar_relacion('belongsToMany', 'employees', 'skills');
     migraciones_assert($m2m_employee_skill !== null && $m2m_employee_skill['pivot_table'] === 'employee_skill', 'No se derivó belongsToMany desde el pivote puro.');
     migraciones_assert($buscar_relacion('belongsToMany', 'skills', 'employees') !== null, 'No se generó la dirección inversa belongsToMany.');
-    migraciones_assert($buscar_relacion('belongsToMany', 'modules', 'teachers') === null, 'module_teachers se confundió con pivote puro.');
+    $module_teachers_m2m = $buscar_relacion('belongsToMany', 'modules', 'teachers');
+    migraciones_assert($module_teachers_m2m !== null && $module_teachers_m2m['pivot_table'] === 'module_teachers', 'module_teachers no produjo belongsToMany con su PK propia.');
     migraciones_assert($buscar_relacion('hasMany', 'modules', 'module_teachers') !== null, 'No se conservaron relaciones hacia la entidad asociativa.');
 
     $modelo_employee = generar_codigo_modelo(
@@ -969,211 +979,4 @@ try {
     migraciones_limpiar_fixture($migraciones_relaciones);
 }
 
-$backend_modelos = migraciones_fixture();
-migraciones_escribir($backend_modelos, '2026_10_01_000000_model_generation.php', <<<'MIGRATION'
-<?php
-return new class {
-    public function up(): void
-    {
-        Schema::create('students', function ($table) {
-            $table->id();
-            $table->string('name');
-            $table->foreignId('teacher_id')->constrained('teachers');
-            $table->boolean('active');
-            $table->json('preferences')->nullable();
-            $table->decimal('balance', 10, 2);
-            $table->timestamps();
-            $table->softDeletes();
-        });
-        Schema::create('courses', function ($table) {
-            $table->id();
-            $table->string('title');
-        });
-        Schema::create('teachers', function ($table) {
-            $table->id();
-            $table->string('name');
-        });
-        Schema::create('student_course', function ($table) {
-            $table->foreignId('student_id')->constrained('students');
-            $table->foreignId('course_id')->constrained('courses');
-            $table->primary(['student_id', 'course_id']);
-        });
-        Schema::create('course_teachers', function ($table) {
-            $table->id();
-            $table->foreignId('course_id')->constrained('courses');
-            $table->foreignId('teacher_id')->constrained('teachers');
-            $table->timestamps();
-        });
-        Schema::create('custom_records', function ($table) {
-            $table->string('custom_key')->primary();
-            $table->string('label');
-        });
-        Schema::create('imports', function ($table) {
-            $table->string('source');
-            $table->text('payload');
-        });
-        Schema::create('cache', function ($table) {
-            $table->string('key')->primary();
-            $table->mediumText('value');
-            $table->integer('expiration');
-        });
-    }
-};
-MIGRATION
-);
-try {
-    $resumen_modelos = generar_backend_crud($backend_modelos, [
-        'clases' => ['custom_records' => 'CustomRecord'],
-    ]);
-    $modelos_generados = array_column($resumen_modelos['modelos'], 'clase');
-    sort($modelos_generados, SORT_STRING);
-    migraciones_assert($modelos_generados === ['Course', 'CourseTeacher', 'CustomRecord', 'Student', 'Teacher'], 'El generador produjo un conjunto de modelos distinto de las entidades B03 elegibles.');
-
-    $ruta_student_model = $backend_modelos . '/app/Models/Student.php';
-    $student_model = file_get_contents($ruta_student_model);
-    migraciones_assert(str_contains($student_model, 'public $timestamps = true;'), 'El archivo real de Student no configura timestamps.');
-    migraciones_assert(str_contains($student_model, 'use SoftDeletes;'), 'El archivo real de Student no incluye SoftDeletes.');
-    migraciones_assert(str_contains($student_model, "'active' => 'boolean'") && str_contains($student_model, "'preferences' => 'array'") && str_contains($student_model, "'balance' => 'decimal:2'"), 'El archivo real de Student no contiene los casts esperados.');
-    migraciones_assert(str_contains($student_model, "'student_course'") && str_contains($student_model, "'student_id'") && str_contains($student_model, "'course_id'"), 'El archivo real de Student no usa los metadatos de B04 para belongsToMany.');
-    migraciones_assert(str_contains($student_model, "belongsTo(Teacher::class, 'teacher_id', 'id')"), 'El archivo real de Student no genera belongsTo desde B04.');
-    $student_controller = file_get_contents($backend_modelos . '/app/Http/Controllers/StudentController.php');
-    migraciones_assert(str_contains($student_controller, "Student::with(['teacher'])->get()"), 'El controlador perdió el eager loading de la relación B04.');
-    $course_model = file_get_contents($backend_modelos . '/app/Models/Course.php');
-    migraciones_assert(str_contains($course_model, 'public $timestamps = false;')
-        && !str_contains($course_model, 'protected $primaryKey'), 'El modelo estándar no conserva la PK inferida ni desactiva timestamps ausentes.');
-    migraciones_assert(file_exists($backend_modelos . '/app/Models/CustomRecord.php'), 'No se generó el modelo con nombre personalizado.');
-    $custom_model = file_get_contents($backend_modelos . '/app/Models/CustomRecord.php');
-    migraciones_assert(str_contains($custom_model, "protected \$table = 'custom_records';")
-        && str_contains($custom_model, "protected \$primaryKey = 'custom_key';")
-        && str_contains($custom_model, "protected \$keyType = 'string';")
-        && str_contains($custom_model, 'public $incrementing = false;'), 'El modelo personalizado no conserva tabla/PK/string-key.');
-    $course_teacher_model = file_get_contents($backend_modelos . '/app/Models/CourseTeacher.php');
-    migraciones_assert(str_contains($course_teacher_model, 'belongsTo(Course::class') && str_contains($course_teacher_model, 'belongsTo(Teacher::class'), 'El modelo asociativo no contiene sus relaciones belongsTo.');
-    migraciones_assert(!str_contains($course_teacher_model, 'belongsToMany('), 'La entidad asociativa generó belongsToMany.');
-    migraciones_assert(!file_exists($backend_modelos . '/app/Models/StudentCourse.php')
-        && !file_exists($backend_modelos . '/app/Models/Cache.php')
-        && !file_exists($backend_modelos . '/app/Models/Import.php'), 'Se generó modelo para pivote, auxiliar o tabla ambigua.');
-    foreach (['Student.php', 'Course.php', 'Teacher.php', 'CourseTeacher.php', 'CustomRecord.php'] as $modelo_archivo) {
-        $ruta_modelo = $backend_modelos . '/app/Models/' . $modelo_archivo;
-        $salida_lint = [];
-        $codigo_lint = 0;
-        exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($ruta_modelo), $salida_lint, $codigo_lint);
-        migraciones_assert($codigo_lint === 0, "El modelo real $modelo_archivo no pasó php -l: " . implode(' ', $salida_lint));
-    }
-    echo "OK: generación real B05, casts, claves, relaciones y exclusiones\n";
-} finally {
-    migraciones_limpiar_arbol_temporal($backend_modelos);
-}
-
-$backend_controladores = migraciones_fixture();
-migraciones_escribir($backend_controladores, '2026_11_01_000000_api_crud.php', <<<'MIGRATION'
-<?php
-return new class {
-    public function up(): void
-    {
-        Schema::create('departments', function ($table) {
-            $table->id();
-            $table->string('name');
-        });
-        Schema::create('projects', function ($table) {
-            $table->id();
-            $table->string('name', 80);
-            $table->string('slug')->unique();
-            $table->foreignId('department_id')->constrained('departments');
-            $table->unique(['name', 'department_id']);
-            $table->text('notes')->nullable();
-            $table->string('contact_email')->nullable();
-            $table->string('unverified_id');
-            $table->string('optional_code')->default(null);
-            $table->integer('attempts')->default(3);
-            $table->timestamps();
-            $table->softDeletes();
-        });
-        Schema::create('project_tags', function ($table) {
-            $table->foreignId('project_id')->constrained('projects');
-            $table->foreignId('tag_id')->constrained('tags');
-            $table->primary(['project_id', 'tag_id']);
-        });
-        Schema::create('tags', function ($table) {
-            $table->id();
-            $table->string('name');
-        });
-        Schema::create('custom_entries', function ($table) {
-            $table->string('entry_code')->primary();
-            $table->string('external_ref')->unique();
-        });
-        Schema::create('cache', function ($table) {
-            $table->string('key')->primary();
-            $table->mediumText('value');
-            $table->integer('expiration');
-        });
-        Schema::create('review_queue', function ($table) {
-            $table->string('payload');
-        });
-    }
-};
-MIGRATION
-);
-try {
-    $resumen_controladores = generar_backend_crud($backend_controladores, []);
-    $controladores_generados = array_column($resumen_controladores['controladores'], 'clase');
-    sort($controladores_generados, SORT_STRING);
-    migraciones_assert($controladores_generados === ['CustomEntryController', 'DepartmentController', 'ProjectController', 'TagController'], 'Se generaron controladores para tablas no elegibles o faltan controladores de entidades.');
-
-    $ruta_project_controller = $backend_controladores . '/app/Http/Controllers/ProjectController.php';
-    $project_controller = file_get_contents($ruta_project_controller);
-    foreach (['function index(', 'function store(', 'function show(', 'function update(', 'function destroy('] as $metodo) {
-        migraciones_assert(str_contains($project_controller, $metodo), "Falta la operación API CRUD $metodo.");
-    }
-    migraciones_assert(str_contains($project_controller, 'return response()->json($items, 200);')
-        && str_contains($project_controller, 'return response()->json($item, 201);')
-        && !str_contains($project_controller, "'success' =>")
-        && !str_contains($project_controller, "'data' =>"), 'Las respuestas exitosas no son JSON directos según pracExaLav.');
-    migraciones_assert(str_contains($project_controller, "Rule::exists('departments', 'id')")
-        && str_contains($project_controller, "Rule::unique('projects', 'slug')")
-        && str_contains($project_controller, "->ignore(\$item->getKey(), 'id')")
-        && str_contains($project_controller, "Rule::unique('projects', 'name')->where('department_id', \$request->input('department_id'))")
-        && str_contains($project_controller, "Rule::unique('projects', 'name')->where('department_id', \$request->input('department_id', \$item->getAttribute('department_id')))"), 'Las reglas exists/unique no corresponden a FK, unique o PK analizadas.');
-    migraciones_assert(str_contains($project_controller, "'name' => ['required', 'string', 'max:80', Rule::unique('projects', 'name')")
-        && str_contains($project_controller, "'notes' => ['nullable', 'string']")
-        && str_contains($project_controller, "'contact_email' => ['nullable', 'string', 'max:255']")
-        && str_contains($project_controller, "'unverified_id' => ['required', 'string', 'max:255']")
-        && str_contains($project_controller, "'optional_code' => ['sometimes', 'string', 'max:255']")
-        && str_contains($project_controller, "'attempts' => ['sometimes', 'integer']"), 'Store no respeta required, nullable, default o tipo.');
-    migraciones_assert(str_contains($project_controller, "'name' => ['sometimes', 'string', 'max:80', Rule::unique('projects', 'name')")
-        && str_contains($project_controller, "'notes' => ['sometimes', 'nullable', 'string']")
-        && str_contains($project_controller, "'unverified_id' => ['sometimes', 'string', 'max:255']"), 'Update no permite cambios parciales con las reglas de tipo correctas.');
-    migraciones_assert(!str_contains($project_controller, "Rule::exists('projects', 'unverified_id')"), 'Se inventó una FK por el nombre terminado en _id.');
-    migraciones_assert(!str_contains($project_controller, "'id' => [")
-        && !str_contains($project_controller, "'created_at' => [")
-        && !str_contains($project_controller, "'deleted_at' => [")
-        && str_contains($project_controller, '$data = $validator->validated();')
-        && str_contains($project_controller, 'Project::create($data)')
-        && str_contains($project_controller, '$item->update($data)'), 'La validación deja pasar campos protegidos o la persistencia no usa solo datos validados.');
-    migraciones_assert(str_contains($project_controller, "Project::with(['department'])->get()")
-        && str_contains($project_controller, 'return response()->json($item, 200);')
-        && str_contains($project_controller, "['mensaje' => 'Registro no encontrado.'], 404")
-        && str_contains($project_controller, '$item->delete()')
-        && str_contains($project_controller, "['mensaje' => 'Registro eliminado exitosamente.'], 200")
-        && str_contains($project_controller, 'The given data was invalid.')
-        && str_contains($project_controller, '$validator->errors()')
-        && str_contains($project_controller, '], 422);'), 'No se manejan relación, 404, destroy o errores de validación JSON.');
-    $project_model = file_get_contents($backend_controladores . '/app/Models/Project.php');
-    migraciones_assert(str_contains($project_model, 'use SoftDeletes;'), 'El controlador de proyecto no se apoya en el modelo SoftDeletes generado.');
-
-    $custom_controller = file_get_contents($backend_controladores . '/app/Http/Controllers/CustomEntryController.php');
-    migraciones_assert(str_contains($custom_controller, "->ignore(\$item->getKey(), 'entry_code')"), 'Unique update no respeta la PK personalizada.');
-    migraciones_assert(!file_exists($backend_controladores . '/app/Http/Controllers/ProjectTagController.php')
-        && !file_exists($backend_controladores . '/app/Http/Controllers/CacheController.php')
-        && !file_exists($backend_controladores . '/app/Http/Controllers/ReviewQueueController.php'), 'Se generó controlador para pivote, auxiliar o tabla ambigua.');
-    foreach (['ProjectController.php', 'DepartmentController.php', 'TagController.php', 'CustomEntryController.php'] as $controlador_archivo) {
-        $ruta_controlador = $backend_controladores . '/app/Http/Controllers/' . $controlador_archivo;
-        $salida_lint = [];
-        $codigo_lint = 0;
-        exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($ruta_controlador), $salida_lint, $codigo_lint);
-        migraciones_assert($codigo_lint === 0, "El controlador real $controlador_archivo no pasó php -l: " . implode(' ', $salida_lint));
-    }
-    echo "OK: generación real B06, CRUD API, validación, respuestas JSON y exclusiones\n";
-} finally {
-    migraciones_limpiar_arbol_temporal($backend_controladores);
-}
+require_once __DIR__ . '/backend_source_adaptation_test.php';

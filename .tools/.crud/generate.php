@@ -15,6 +15,7 @@ if (PHP_VERSION_ID < 80000) {
 define('CRUD_DIR', __DIR__);
 
 require CRUD_DIR . '/src/util.php';
+require CRUD_DIR . '/src/source_adaptation.php';
 require CRUD_DIR . '/src/laravel.php';
 require CRUD_DIR . '/src/migraciones.php';
 require CRUD_DIR . '/src/hosts.php';
@@ -162,18 +163,30 @@ try {
                 }
             }
 
+            if (!empty($resumen['mapeo_fuentes'])) {
+                mensaje('');
+                mensaje('--- Fuentes backend y destinos ---');
+                foreach ($resumen['mapeo_fuentes'] as $mapeo) {
+                    mensaje("  [{$mapeo['tipo']}] {$mapeo['origen']} -> {$mapeo['destino']}");
+                    mensaje("    Adaptaciones: {$mapeo['adaptaciones_permitidas']}");
+                }
+            }
+
             // Rutas API (Bloque 5)
             if (!empty($resumen['rutas_api'])) {
                 mensaje('');
                 mensaje('--- Rutas API (routes/api.php) ---');
-                mensaje("  [{$resumen['rutas_api']}] Bloque de rutas API registrado con Route::apiResource()");
+                mensaje("  [{$resumen['rutas_api']}] Rutas API adaptadas desde la referencia");
+            }
+            if (!empty($resumen['rutas_web'])) {
+                mensaje("  [{$resumen['rutas_web']}] routes/web.php (copia fuente exacta; sin CRUD Web en Backend)");
             }
 
             // Cloudinary (Bloque 5)
             if (!empty($resumen['cloudinary'])) {
                 mensaje('');
                 mensaje('--- Cloudinary ---');
-                exito('Helper App\Support\Cloudinary asegurado.');
+                exito('SDK cloudinary/cloudinary_php configurado.');
                 exito('Entrada de servicio cloudinary configurada en config/services.php.');
             }
 
@@ -214,6 +227,15 @@ try {
                 }
             }
 
+            if (!empty($resumen['adaptaciones_pendientes'])) {
+                mensaje('');
+                mensaje('--- Adaptaciones pendientes (sin cambios destructivos) ---');
+                foreach ($resumen['adaptaciones_pendientes'] as $pendiente) {
+                    $tabla = $pendiente['tabla'] === null ? '' : " [{$pendiente['tabla']}]";
+                    aviso($pendiente['tipo'] . $tabla . ': ' . $pendiente['motivo']);
+                }
+            }
+
             // Errores
             if (!empty($resumen['errores'])) {
                 mensaje('');
@@ -224,8 +246,14 @@ try {
                 exit(1);
             }
 
+            if (!empty($resumen['adaptaciones_pendientes'])) {
+                mensaje('');
+                aviso('Backend adaptado parcialmente; resuelva las adaptaciones pendientes antes de considerarlo completo.');
+                exit(1);
+            }
+
             mensaje('');
-            exito('Backend generado correctamente (Modelos, Controladores, Rutas y Configuración).');
+            exito('Backend adaptado desde las fuentes originales de Modelos, Controladores y Rutas.');
             exit(0);
 
         case 'front':
@@ -318,7 +346,14 @@ try {
                 mensaje("  [{$resumen['layout']}] Layout base: resources/views/layouts/app.blade.php");
             }
             if (!empty($resumen['css'])) {
-                mensaje("  [{$resumen['css']}] Estilos CSS: public/css/crud.css");
+                mensaje("  [{$resumen['css']}] Estilos CSS originales: resources/css/app.css");
+            }
+            if (!empty($resumen['archivos_fuente'])) {
+                mensaje('');
+                mensaje('--- Archivos fuente frontend ---');
+                foreach ($resumen['archivos_fuente'] as $archivo) {
+                    mensaje("  [{$archivo['estado']}] {$archivo['origen']} -> {$archivo['destino']} (tokens: {$archivo['adaptaciones_aplicadas']})");
+                }
             }
 
             // Rutas Web
@@ -332,7 +367,7 @@ try {
             if (!empty($resumen['env_actualizado'])) {
                 mensaje('');
                 mensaje('--- Configuración .env ---');
-                exito('Variables BACKEND_API_URL y APP_URL actualizadas en Frontend/.env.');
+                exito('API_BASE_URL se agregó/completó en Frontend/.env sin sustituir otros valores.');
             }
 
             // Tablas omitidas
@@ -353,6 +388,15 @@ try {
                 }
             }
 
+            if (!empty($resumen['adaptaciones_pendientes'])) {
+                mensaje('');
+                mensaje('--- Adaptaciones pendientes (sin inventar etiquetas ni comportamiento) ---');
+                foreach ($resumen['adaptaciones_pendientes'] as $pendiente) {
+                    $tabla = $pendiente['tabla'] === null ? '' : " [{$pendiente['tabla']}]";
+                    aviso($pendiente['tipo'] . $tabla . ': ' . $pendiente['motivo']);
+                }
+            }
+
             // Errores
             if (!empty($resumen['errores'])) {
                 mensaje('');
@@ -363,8 +407,14 @@ try {
                 exit(1);
             }
 
+            if (!empty($resumen['adaptaciones_pendientes'])) {
+                mensaje('');
+                aviso('Frontend adaptado parcialmente; complete los mapeos pendientes antes de considerarlo generado.');
+                exit(1);
+            }
+
             mensaje('');
-            exito('Frontend generado correctamente (Controladores Web, Vistas Blade, CSS y Rutas).');
+            exito('Frontend adaptado desde pracExaLav/frontend; el diseño, las vistas, CSS y JavaScript proceden de las fuentes originales.');
             exit(0);
 
         default:

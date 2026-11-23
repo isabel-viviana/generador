@@ -1293,6 +1293,72 @@ function _analizar_relaciones_estructurales(&$tablas)
         }
     }
 
+    // Las tablas asociativas con clave primaria propia (por ejemplo
+    // module_teachers) siguen siendo entidades CRUD, pero también producen
+    // belongsToMany en los dos modelos que conectan.
+    foreach ($tablas as $nombre_asociativa => $tabla_asociativa) {
+        if (($tabla_asociativa['classification']['type'] ?? null) !== 'associative_entity') {
+            continue;
+        }
+        $partes = $foreign_keys_resueltas[$nombre_asociativa] ?? [];
+        if (count($partes) !== 2
+            || $partes[0]['status'] !== 'complete'
+            || $partes[1]['status'] !== 'complete'
+            || $partes[0]['target_table'] === $partes[1]['target_table']) {
+            continue;
+        }
+        $fk_a = $partes[0]['fk'];
+        $fk_b = $partes[1]['fk'];
+        if (count($fk_a['columnas'] ?? []) !== 1 || count($fk_b['columnas'] ?? []) !== 1) {
+            continue;
+        }
+        $tabla_a = $partes[0]['target_table'];
+        $tabla_b = $partes[1]['target_table'];
+        $columnas = array_keys($tabla_asociativa['columnas'] ?? []);
+        $pk = array_values($tabla_asociativa['primary_key']['columnas'] ?? []);
+        $fks = array_values(array_unique(array_merge(
+            $fk_a['columnas'] ?? [],
+            $fk_b['columnas'] ?? []
+        )));
+        $estructural = array_values(array_unique(array_merge($pk, $fks, ['created_at', 'updated_at', 'deleted_at'])));
+        $negocio = array_values(array_diff($columnas, $estructural));
+        if ($negocio !== []) {
+            continue;
+        }
+
+        foreach ([[0, 1], [1, 0]] as [$indice_origen, $indice_destino]) {
+            $fk_origen = $partes[$indice_origen]['fk'];
+            $fk_destino = $partes[$indice_destino]['fk'];
+            $tabla_origen = $partes[$indice_origen]['target_table'];
+            $tabla_destino = $partes[$indice_destino]['target_table'];
+            $id = 'manyToMany:' . $nombre_asociativa . ':' . $tabla_origen . ':' . $tabla_destino;
+            $relacion = [
+                'id' => $id,
+                'type' => 'belongsToMany',
+                'status' => 'complete',
+                'from' => ['table' => $tabla_origen, 'columns' => $fk_origen['columnas_referenciadas']],
+                'to' => ['table' => $tabla_destino, 'columns' => $fk_destino['columnas_referenciadas']],
+                'pivot_table' => $nombre_asociativa,
+                'keys' => [
+                    'foreign' => ['table' => $nombre_asociativa, 'columns' => $fk_origen['columnas']],
+                    'related' => ['table' => $nombre_asociativa, 'columns' => $fk_destino['columnas']],
+                    'owner' => ['table' => $tabla_origen, 'columns' => $fk_origen['columnas_referenciadas']],
+                    'related_owner' => ['table' => $tabla_destino, 'columns' => $fk_destino['columnas_referenciadas']],
+                ],
+                'foreign_keys' => [$partes[$indice_origen]['id'], $partes[$indice_destino]['id']],
+                'evidence' => ['own_primary_key_associative_entity', 'two_resolved_foreign_keys', 'no_business_columns'],
+                'form_fields' => [
+                    'select_field_candidates' => _campos_candidatos_selector_relacion($tablas[$tabla_destino]),
+                ],
+                'endpoint_classifications' => [
+                    'from' => $tablas[$tabla_origen]['classification']['type'] ?? 'ambiguous',
+                    'to' => $tablas[$tabla_destino]['classification']['type'] ?? 'ambiguous',
+                ],
+            ];
+            _agregar_relacion_estructural($relaciones, $tablas, $relacion, $tabla_origen, $tabla_destino);
+        }
+    }
+
     foreach ($tablas as $nombre_pivote => $tabla_pivote) {
         if (($tabla_pivote['classification']['type'] ?? null) !== 'pure_pivot') {
             continue;
